@@ -38,14 +38,13 @@ success() { echo -e "${GREEN}[SUCCESS]${NC} $1" | tee -a "$LOG_FILE"; }
 # Stage 1 banner
 show_stage_banner() {
     echo -e "${PURPLE}${BOLD}"
-    echo "╔═══════════════════════════════════════════════════════════════╗"
-    echo "║                 📦 STAGE 1: DEPENDENCIES 📦                  ║"
-    echo "║                                                               ║"
-    echo "║  Downloading and installing all required packages from       ║"
-    echo "║  GitHub repository for universal compatibility               ║"
-    echo "║                                                               ║"
-    echo "║  Repository: github.com/GlitchLinux/autoFS                   ║"
-    echo "╚═══════════════════════════════════════════════════════════════╝"
+    echo "╔══════════════════════════════════════════════════════════╗"
+    echo "║               📦 STAGE 1: DEPENDENCIES 📦                  ║"
+    echo "║                                                          ║"
+    echo "║    Downloading and installing required packages from     ║"
+    echo "║      GitHub repository for universal compatibility       ║"
+    echo "║       Repository: github.com/GlitchLinux/autoFS          ║"
+    echo "╚══════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
     echo
 }
