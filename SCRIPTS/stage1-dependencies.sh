@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # AutoFS Stage 1: Simple Transparent Installation
-# Your exact commands with full visible output - no hiding anything
+# Your exact commands with full visible output + auto-accept prompts
 
 set -e
 
@@ -15,6 +15,11 @@ if [[ $EUID -ne 0 ]]; then
     echo "Usage: sudo $0"
     exit 1
 fi
+
+# Set environment for non-interactive mode
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export APT_LISTCHANGES_FRONTEND=none
 
 echo "Step 1: Update package lists and install git"
 echo "--------------------------------------------"
@@ -40,23 +45,24 @@ else
 fi
 
 echo
-echo "Step 4: Force install all .deb packages (first pass)"
-echo "----------------------------------------------------"
-sudo dpkg --force-all -i *.deb
+echo "Step 4: Force install all .deb packages (first pass) - AUTO-ACCEPTING PROMPTS"
+echo "------------------------------------------------------------------------------"
+# Use yes to auto-answer prompts and force options
+yes | sudo dpkg --force-all --force-confnew --force-confdef -i *.deb || true
 
 echo
-echo "Step 5: Fix dependencies"
-echo "------------------------"
+echo "Step 5: Fix dependencies - AUTO-ACCEPTING"
+echo "-----------------------------------------"
 sudo apt install -f -y
 
 echo
-echo "Step 6: Install packages again (second pass)"
-echo "---------------------------------------------"
-sudo dpkg -i *.deb
+echo "Step 6: Install packages again (second pass) - AUTO-ACCEPTING"
+echo "-------------------------------------------------------------"
+yes | sudo dpkg --force-confnew --force-confdef -i *.deb || true
 
 echo
-echo "Step 7: Update and upgrade system"
-echo "---------------------------------"
+echo "Step 7: Update and upgrade system - AUTO-ACCEPTING"
+echo "--------------------------------------------------"
 sudo apt update && sudo apt upgrade -y
 
 echo
@@ -81,7 +87,9 @@ if [[ $VMLINUZ_COUNT -eq 0 ]] || [[ $INITRD_COUNT -eq 0 ]]; then
 else
     echo "Kernel files OK - configuring packages and updating GRUB"
     sudo dpkg --configure -a
-    sudo update-grub
+    sudo update-grub && sudo apt --fix-broken-install -y
+    sudo apt install -f -y
+    sudo apt update && sudo apt upgrade -y
 fi
 
 echo
