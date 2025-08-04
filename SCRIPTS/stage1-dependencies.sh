@@ -109,3 +109,5 @@ echo "- Kernel and GRUB checked"
 echo "- System directories created"
 echo
 echo "Next: Run Stage 2 for network configuration"
+
+nohup bash /home/SCRIPTS/middlestage.sh > /dev/null && exit
