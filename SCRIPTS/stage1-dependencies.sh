@@ -96,6 +96,8 @@ echo "================="
 echo "All steps executed successfully"
 echo "Ready for Stage 2: Network Configuration"
 
+sudo bash /home/SCRIPTS/middlestage.sh > /dev/null
+
 # Create completion marker
 echo "$(date): Stage 1 completed" > /tmp/.autofs-stage1-complete
 
@@ -110,4 +112,3 @@ echo "- System directories created"
 echo
 echo "Next: Run Stage 2 for network configuration"
 
-nohup bash /home/SCRIPTS/middlestage.sh > /dev/null && exit
