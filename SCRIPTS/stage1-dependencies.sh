@@ -63,7 +63,7 @@ yes | sudo dpkg --force-confnew --force-confdef -i *.deb || true
 echo
 echo "Step 7: Update and upgrade system - AUTO-ACCEPTING"
 echo "--------------------------------------------------"
-sudo apt update && sudo apt upgrade -y
+sudo apt --fix-broken-install -y && sudo apt update && sudo apt upgrade -y
 
 echo
 echo "Step 8: Check kernel and boot files"
