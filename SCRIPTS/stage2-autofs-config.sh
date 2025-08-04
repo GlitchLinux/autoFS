@@ -357,6 +357,23 @@ EOF
 configure_udev_rules() {
     print_status "Configuring udev rules for automatic device detection..."
     
+    # Check if /dev/autofs exists and handle it
+    if [ -e "/dev/autofs" ]; then
+        if [ ! -d "/dev/autofs" ]; then
+            print_warning "/dev/autofs exists but is not a directory, removing..."
+            rm -f /dev/autofs
+        fi
+    fi
+    
+    # Create udev symlink directory
+    if mkdir -p /dev/autofs/{usb,disk} 2>/dev/null; then
+        print_success "Created /dev/autofs directory structure"
+    else
+        print_warning "Could not create /dev/autofs directories, skipping udev symlinks"
+        print_status "AutoFS will work without udev symlinks"
+        return 0
+    fi
+    
     cat > /etc/udev/rules.d/99-autofs-usb.rules << 'EOF'
 # AutoFS udev rules for USB device detection
 # Automatically creates symlinks for AutoFS mounting
@@ -369,9 +386,6 @@ KERNEL=="sd[a-z][0-9]*", SUBSYSTEMS=="usb", ACTION=="remove", RUN+="/bin/rm -f /
 KERNEL=="mmcblk[0-9]p[0-9]*", ACTION=="add", SYMLINK+="autofs/usb/$kernel"
 KERNEL=="mmcblk[0-9]p[0-9]*", ACTION=="remove", RUN+="/bin/rm -f /dev/autofs/usb/$kernel"
 EOF
-
-    # Create udev symlink directory
-    mkdir -p /dev/autofs/{usb,disk}
     
     # Reload udev rules
     udevadm control --reload-rules
@@ -384,21 +398,24 @@ EOF
 configure_systemd_services() {
     print_status "Configuring systemd services..."
     
+    # The NFS-related warnings are normal - those services are only needed for NFS server functionality
+    # We're only configuring NFS client functionality through autofs
+    
     # Enable autofs service
     systemctl enable autofs
     
-    # Create custom service for AutoFS monitoring
+    # Create custom service for AutoFS monitoring (optional)
     cat > /etc/systemd/system/autofs-monitor.service << 'EOF'
 [Unit]
 Description=AutoFS Device Monitor
 After=autofs.service
-Requires=autofs.service
 
 [Service]
-Type=forking
+Type=simple
 ExecStart=/usr/local/bin/autofs-monitor
-Restart=always
-RestartSec=5
+Restart=on-failure
+RestartSec=10
+User=root
 
 [Install]
 WantedBy=multi-user.target
@@ -410,26 +427,46 @@ EOF
 # AutoFS device monitoring script
 # Monitors for new devices and updates AutoFS maps
 
+print_log() {
+    echo "$(date): $1" >> /var/log/autofs-monitor.log
+}
+
+print_log "AutoFS monitor started"
+
 while true; do
-    # Check for new USB devices
-    for device in /dev/sd[a-z][0-9]*; do
+    # Check for new USB devices every 10 seconds
+    for device in /dev/sd[a-z][0-9]* 2>/dev/null; do
         if [ -b "$device" ]; then
             basename_dev=$(basename "$device")
-            if [ ! -d "/mnt/auto/usb/$basename_dev" ]; then
-                # Trigger autofs to create mount point
-                ls "/mnt/auto/usb/$basename_dev" &>/dev/null
+            # Just log device detection, autofs will handle mounting on access
+            if [ ! -f "/tmp/autofs-seen-$basename_dev" ]; then
+                print_log "New device detected: $basename_dev"
+                touch "/tmp/autofs-seen-$basename_dev"
             fi
         fi
     done
     
-    # Sleep for 5 seconds before next check
-    sleep 5
+    # Clean up detection flags for removed devices
+    for flag in /tmp/autofs-seen-*; do
+        if [ -f "$flag" ]; then
+            device=$(basename "$flag" | sed 's/autofs-seen-//')
+            if [ ! -b "/dev/$device" ]; then
+                rm -f "$flag"
+                print_log "Device removed: $device"
+            fi
+        fi
+    done
+    
+    # Sleep for 10 seconds before next check
+    sleep 10
 done
 EOF
 
     chmod +x /usr/local/bin/autofs-monitor
     
+    # Don't auto-enable the monitor service - let user decide
     print_success "Systemd services configured"
+    print_status "Optional: Enable AutoFS monitor with 'systemctl enable autofs-monitor'"
 }
 
 # Create utility scripts
