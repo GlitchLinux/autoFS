@@ -64,19 +64,19 @@ echo
 echo "Step 7: Update and upgrade system - AUTO-ACCEPTING"
 echo "--------------------------------------------------"
 sudo apt --fix-broken-install -y && sudo apt update && sudo apt upgrade -y
+#
+#echo
+#echo "Step 8: Verify critical packages"
+#echo "--------------------------------"
+#echo "Checking critical packages:"
 
-echo
-echo "Step 8: Verify critical packages"
-echo "--------------------------------"
-echo "Checking critical packages:"
-
-for pkg in nginx python3 iptables dnsmasq bridge-utils ntfs-3g; do
-    if dpkg -l "$pkg" 2>/dev/null | grep -q "^ii" || command -v "$pkg" >/dev/null 2>&1; then
-        echo "✓ $pkg - OK"
-    else
-        echo "✗ $pkg - Missing"
-    fi
-done
+#for pkg in nginx python3 iptables dnsmasq bridge-utils ntfs-3g; do
+#    if dpkg -l "$pkg" 2>/dev/null | grep -q "^ii" || command -v "$pkg" >/dev/null 2>&1; then
+#       echo "✓ $pkg - OK"
+#    else
+#        echo "✗ $pkg - Missing"
+#    fi
+#done
 
 echo
 echo "Step 10: Create system directories"
