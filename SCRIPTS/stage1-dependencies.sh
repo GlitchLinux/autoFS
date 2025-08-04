@@ -66,34 +66,7 @@ echo "--------------------------------------------------"
 sudo apt --fix-broken-install -y && sudo apt update && sudo apt upgrade -y
 
 echo
-echo "Step 8: Check kernel and boot files"
-echo "-----------------------------------"
-echo "Boot directory contents:"
-sudo ls -l /boot/ | grep -E "(vmlinuz|initrd)" || echo "No vmlinuz/initrd files found"
-
-# Check for kernel files
-VMLINUZ_COUNT=$(ls /boot/vmlinuz* 2>/dev/null | wc -l)
-INITRD_COUNT=$(ls /boot/initrd* 2>/dev/null | wc -l)
-
-echo "Found $VMLINUZ_COUNT vmlinuz files"
-echo "Found $INITRD_COUNT initrd files"
-
-if [[ $VMLINUZ_COUNT -eq 0 ]] || [[ $INITRD_COUNT -eq 0 ]]; then
-    echo "WARNING: Missing kernel files - attempting reinstall"
-    echo "Installing kernel packages..."
-    sudo apt install -y linux-image-amd64 linux-headers-amd64
-    echo "Updating GRUB..."
-    sudo update-grub
-else
-    echo "Kernel files OK - configuring packages and updating GRUB"
-    sudo dpkg --configure -a
-    sudo update-grub && sudo apt --fix-broken-install -y
-    sudo apt install -f -y
-    sudo apt update && sudo apt upgrade -y
-fi
-
-echo
-echo "Step 9: Verify critical packages"
+echo "Step 8: Verify critical packages"
 echo "--------------------------------"
 echo "Checking critical packages:"
 
