@@ -31,7 +31,7 @@ STAGES=(
     "stage1-dependencies.sh"
     "stage2-network-config.sh" 
     "stage3_storage.sh"
-    "stage4_webserver.sh"
+    "stage4_webserver_dark.sh"
 )
 
 for stage in "${STAGES[@]}"; do
