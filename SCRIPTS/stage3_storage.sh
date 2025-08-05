@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# AutoFS Stage 3: Storage Discovery & Mounting
+# AutoFS Stage 3: Storage Discovery & Mounting (FIXED VERSION)
 # Discovers and safely mounts all available storage devices
 
 set -e
 
-echo "💾 AutoFS Stage 3: Storage Discovery & Mounting 💾"
-echo "=================================================="
+echo "💾 AutoFS Stage 3: Storage Discovery & Mounting (FIXED) 💾"
+echo "==========================================================="
 echo
 
 # Color codes for output
@@ -66,30 +66,47 @@ chmod 755 "$AUTOFS_WEB_BASE"
 success "Storage directories created"
 
 echo
-highlight "🔍 Block Device Discovery Phase"
-echo "==============================="
+highlight "🔍 Enhanced Block Device Discovery Phase"
+echo "========================================"
 
 # Log function
 log_storage() {
     echo "$(date '+%Y-%m-%d %H:%M:%S'): $1" >> "$STORAGE_LOG"
 }
 
-log_storage "Starting storage discovery phase"
+log_storage "Starting enhanced storage discovery phase"
 
-# Discover all block devices
-info "Scanning for all block devices..."
-echo "Discovered devices:" > "$STORAGE_LOG.tmp"
-lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT,LABEL,UUID,TYPE -n -r >> "$STORAGE_LOG.tmp"
+# Discover all block devices with better filtering
+info "Scanning for all block devices and partitions..."
+echo "Raw device scan:" > "$STORAGE_LOG.tmp"
+lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT,LABEL,UUID,TYPE,MODEL -n -r >> "$STORAGE_LOG.tmp"
 
-# Get detailed device information
-DEVICES=$(lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT,LABEL,UUID,TYPE,MODEL -n -r | grep -E "(disk|part)" | grep -v "loop")
+# Get detailed device information - FIXED: Better filtering for partitions
+echo
+info "Raw lsblk output:"
+lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT,LABEL,UUID,TYPE,MODEL
+
+echo
+info "Filtering for valid storage devices..."
+
+# FIXED: Look for both disk and part types, exclude loop, ram, and rom devices
+DEVICES=$(lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT,LABEL,UUID,TYPE,MODEL -n -r | grep -E "(disk|part)" | grep -v -E "(loop|ram|rom|sr0|fd0)")
 
 if [[ -z "$DEVICES" ]]; then
-    warn "No storage devices found"
-    exit 0
+    warn "No storage devices found after filtering"
+    info "Trying broader search..."
+    # Fallback: try without model column which might be missing
+    DEVICES=$(lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINT,LABEL,UUID,TYPE -n -r | grep -E "(disk|part)" | grep -v -E "(loop|ram|rom|sr0|fd0)")
 fi
 
-echo "Found devices:"
+if [[ -z "$DEVICES" ]]; then
+    error "No storage devices found"
+    echo "Available devices from lsblk:"
+    lsblk
+    exit 1
+fi
+
+echo "Found valid storage devices:"
 echo "$DEVICES" | while read line; do
     echo "  📱 $line"
 done
@@ -111,25 +128,43 @@ cat > "$MOUNT_STATUS_FILE" << 'EOF'
 }
 EOF
 
-# Update discovery time
-jq --arg time "$(date -Iseconds)" '.discovery_time = $time' "$MOUNT_STATUS_FILE" > "$MOUNT_STATUS_FILE.tmp" && mv "$MOUNT_STATUS_FILE.tmp" "$MOUNT_STATUS_FILE"
+# Update discovery time (use date command that works on all systems)
+jq --arg time "$(date -Iseconds 2>/dev/null || date)" '.discovery_time = $time' "$MOUNT_STATUS_FILE" > "$MOUNT_STATUS_FILE.tmp" && mv "$MOUNT_STATUS_FILE.tmp" "$MOUNT_STATUS_FILE" 2>/dev/null || true
 
 echo
-highlight "🔧 Filesystem Detection & Mounting"
-echo "=================================="
+highlight "🔧 Enhanced Filesystem Detection & Mounting"
+echo "==========================================="
 
 MOUNT_COUNT=0
 SKIP_COUNT=0
 FAIL_COUNT=0
 TOTAL_SIZE=0
 
-# Process each device
-echo "$DEVICES" | while IFS=' ' read -r NAME SIZE FSTYPE MOUNTPOINT LABEL UUID TYPE MODEL; do
+# Process each device - FIXED: Handle variable number of fields
+while IFS=' ' read -r LINE; do
+    # Parse the line into an array
+    read -ra FIELDS <<< "$LINE"
+    
+    # Extract fields (handle missing MODEL field)
+    NAME="${FIELDS[0]}"
+    SIZE="${FIELDS[1]}"
+    FSTYPE="${FIELDS[2]:-}"
+    MOUNTPOINT="${FIELDS[3]:-}"
+    LABEL="${FIELDS[4]:-}"
+    UUID="${FIELDS[5]:-}"
+    TYPE="${FIELDS[6]:-}"
+    MODEL="${FIELDS[7]:-}"
+    
+    # Debug output
+    info "Processing device: $NAME"
+    echo "  Raw line: $LINE"
+    echo "  Parsed - Name: $NAME, Size: $SIZE, FS: $FSTYPE, Mount: $MOUNTPOINT, Type: $TYPE"
     
     # Skip if already mounted (except root filesystem)
     if [[ -n "$MOUNTPOINT" && "$MOUNTPOINT" != "/" && "$MOUNTPOINT" != "[SWAP]" ]]; then
         warn "Skipping $NAME - already mounted at $MOUNTPOINT"
         ((SKIP_COUNT++))
+        echo
         continue
     fi
     
@@ -137,44 +172,74 @@ echo "$DEVICES" | while IFS=' ' read -r NAME SIZE FSTYPE MOUNTPOINT LABEL UUID T
     if [[ "$FSTYPE" == "swap" ]]; then
         info "Skipping $NAME - swap partition"
         ((SKIP_COUNT++))
+        echo
         continue
     fi
     
-    # Skip if no filesystem detected
-    if [[ -z "$FSTYPE" || "$FSTYPE" == "" ]]; then
-        warn "Skipping $NAME - no filesystem detected"
+    # Skip if no filesystem detected AND it's a disk (not partition)
+    if [[ -z "$FSTYPE" && "$TYPE" == "disk" ]]; then
+        warn "Skipping $NAME - disk with no filesystem (likely has partitions)"
         ((SKIP_COUNT++))
+        echo
+        continue
+    fi
+    
+    # Skip if no filesystem detected AND it's a partition
+    if [[ -z "$FSTYPE" && "$TYPE" == "part" ]]; then
+        warn "Skipping $NAME - partition with no detectable filesystem"
+        ((SKIP_COUNT++))
+        echo
+        continue
+    fi
+    
+    # Skip if filesystem is empty string
+    if [[ "$FSTYPE" == "" ]]; then
+        warn "Skipping $NAME - empty filesystem type"
+        ((SKIP_COUNT++))
+        echo
         continue
     fi
     
     DEVICE_PATH="/dev/$NAME"
     
-    # Create mount point name
+    # FIXED: Better mount point naming
     DEVICE_LABEL="${LABEL:-unknown}"
+    # Clean up label for filesystem use
+    DEVICE_LABEL=$(echo "$DEVICE_LABEL" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/_/g')
     MOUNT_NAME="${NAME}_${FSTYPE}_${DEVICE_LABEL}"
-    MOUNT_NAME=$(echo "$MOUNT_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/_/g')
+    MOUNT_NAME=$(echo "$MOUNT_NAME" | sed 's/[^a-z0-9_-]/_/g')
     MOUNT_POINT="$AUTOFS_MOUNT_BASE/drives/$MOUNT_NAME"
     
-    info "Processing device: $NAME ($FSTYPE, $SIZE)"
+    highlight "Processing device: $NAME ($FSTYPE, $SIZE)"
     echo "  Device: $DEVICE_PATH"
     echo "  Label: ${LABEL:-[no label]}"
     echo "  UUID: ${UUID:-[no uuid]}"
+    echo "  Type: $TYPE"
     echo "  Mount point: $MOUNT_POINT"
+    
+    # Verify device exists
+    if [[ ! -b "$DEVICE_PATH" ]]; then
+        error "Device $DEVICE_PATH does not exist or is not a block device"
+        ((FAIL_COUNT++))
+        echo
+        continue
+    fi
     
     # Create mount point
     mkdir -p "$MOUNT_POINT"
     
-    # Determine mount options based on filesystem type
+    # FIXED: More comprehensive filesystem support and better mount options
     MOUNT_OPTIONS="ro,noexec,nosuid,nodev"
+    MOUNT_CMD=""
     
     case "$FSTYPE" in
         "ntfs")
-            MOUNT_CMD="mount -t ntfs-3g -o $MOUNT_OPTIONS,umask=022,windows_names"
+            MOUNT_CMD="mount -t ntfs-3g -o $MOUNT_OPTIONS,umask=022,windows_names,recover"
             ;;
         "exfat")
             MOUNT_CMD="mount -t exfat -o $MOUNT_OPTIONS,umask=022"
             ;;
-        "vfat"|"fat32")
+        "vfat"|"fat32"|"fat16")
             MOUNT_CMD="mount -t vfat -o $MOUNT_OPTIONS,umask=022"
             ;;
         "ext2"|"ext3"|"ext4")
@@ -189,6 +254,12 @@ echo "$DEVICES" | while IFS=' ' read -r NAME SIZE FSTYPE MOUNTPOINT LABEL UUID T
         "hfsplus"|"hfs+")
             MOUNT_CMD="mount -t hfsplus -o $MOUNT_OPTIONS"
             ;;
+        "iso9660")
+            MOUNT_CMD="mount -t iso9660 -o $MOUNT_OPTIONS"
+            ;;
+        "udf")
+            MOUNT_CMD="mount -t udf -o $MOUNT_OPTIONS"
+            ;;
         *)
             warn "Unknown filesystem type: $FSTYPE - attempting generic mount"
             MOUNT_CMD="mount -o $MOUNT_OPTIONS"
@@ -196,23 +267,30 @@ echo "$DEVICES" | while IFS=' ' read -r NAME SIZE FSTYPE MOUNTPOINT LABEL UUID T
     esac
     
     # Attempt to mount the device
-    mount_info "Mounting $DEVICE_PATH with $FSTYPE filesystem..."
+    mount_info "Mounting $DEVICE_PATH ($FSTYPE filesystem)..."
+    echo "  Command: $MOUNT_CMD \"$DEVICE_PATH\" \"$MOUNT_POINT\""
     
-    if $MOUNT_CMD "$DEVICE_PATH" "$MOUNT_POINT" 2>/dev/null; then
+    # FIXED: Better error handling and logging
+    MOUNT_OUTPUT=""
+    if MOUNT_OUTPUT=$($MOUNT_CMD "$DEVICE_PATH" "$MOUNT_POINT" 2>&1); then
         success "Successfully mounted: $NAME → $MOUNT_POINT"
         
         # Create web-accessible symlink
         WEB_LINK="$AUTOFS_WEB_BASE/drives/$MOUNT_NAME"
-        ln -sf "$MOUNT_POINT" "$WEB_LINK" 2>/dev/null || warn "Could not create web symlink"
+        if ln -sf "$MOUNT_POINT" "$WEB_LINK" 2>/dev/null; then
+            mount_info "  Web link created: /drives/$MOUNT_NAME"
+        else
+            warn "Could not create web symlink"
+        fi
         
-        # Get actual mount info
-        ACTUAL_SIZE=$(df -BG "$MOUNT_POINT" 2>/dev/null | tail -1 | awk '{print $2}' | tr -d 'G' || echo "0")
-        USED_SIZE=$(df -BG "$MOUNT_POINT" 2>/dev/null | tail -1 | awk '{print $3}' | tr -d 'G' || echo "0")
-        AVAILABLE_SIZE=$(df -BG "$MOUNT_POINT" 2>/dev/null | tail -1 | awk '{print $4}' | tr -d 'G' || echo "0")
+        # Get actual mount info - FIXED: Better error handling
+        ACTUAL_SIZE=$(df -BG "$MOUNT_POINT" 2>/dev/null | tail -1 | awk '{print $2}' | tr -d 'G' 2>/dev/null || echo "0")
+        USED_SIZE=$(df -BG "$MOUNT_POINT" 2>/dev/null | tail -1 | awk '{print $3}' | tr -d 'G' 2>/dev/null || echo "0")
+        AVAILABLE_SIZE=$(df -BG "$MOUNT_POINT" 2>/dev/null | tail -1 | awk '{print $4}' | tr -d 'G' 2>/dev/null || echo "0")
         
         # Count files (with timeout to avoid hanging on large drives)
-        FILE_COUNT=$(timeout 10s find "$MOUNT_POINT" -type f 2>/dev/null | wc -l || echo "unknown")
-        DIR_COUNT=$(timeout 10s find "$MOUNT_POINT" -type d 2>/dev/null | wc -l || echo "unknown")
+        FILE_COUNT=$(timeout 5s find "$MOUNT_POINT" -type f 2>/dev/null | wc -l 2>/dev/null || echo "unknown")
+        DIR_COUNT=$(timeout 5s find "$MOUNT_POINT" -type d 2>/dev/null | wc -l 2>/dev/null || echo "unknown")
         
         mount_info "  Size: ${ACTUAL_SIZE}GB (Used: ${USED_SIZE}GB, Available: ${AVAILABLE_SIZE}GB)"
         mount_info "  Files: $FILE_COUNT, Directories: $DIR_COUNT"
@@ -225,13 +303,15 @@ echo "$DEVICES" | while IFS=' ' read -r NAME SIZE FSTYPE MOUNTPOINT LABEL UUID T
         
     else
         error "Failed to mount: $NAME ($FSTYPE)"
+        warn "Mount error: $MOUNT_OUTPUT"
         rmdir "$MOUNT_POINT" 2>/dev/null || true
         ((FAIL_COUNT++))
-        log_storage "FAILED: $NAME ($FSTYPE) - mount failed"
+        log_storage "FAILED: $NAME ($FSTYPE) - mount failed: $MOUNT_OUTPUT"
     fi
     
     echo
-done
+    
+done <<< "$DEVICES"
 
 echo
 highlight "📂 System Filesystem Integration"
@@ -265,12 +345,12 @@ for dir_config in "${SYSTEM_DIRS[@]}"; do
 done
 
 echo
-highlight "🔍 Encrypted & Special Device Detection"
-echo "======================================"
+highlight "🔍 Advanced Device Detection"
+echo "============================"
 
 # Detect LUKS encrypted devices
 info "Scanning for encrypted devices..."
-LUKS_DEVICES=$(blkid | grep -i luks | cut -d: -f1 || true)
+LUKS_DEVICES=$(blkid | grep -i luks | cut -d: -f1 2>/dev/null || true)
 
 if [[ -n "$LUKS_DEVICES" ]]; then
     warn "Found encrypted (LUKS) devices:"
@@ -290,7 +370,6 @@ if [[ -n "$LVM_DEVICES" ]]; then
     info "Found LVM logical volumes:"
     echo "$LVM_DEVICES" | while read lv_path; do
         info "  📦 $lv_path"
-        # Note: These would be handled by the main device loop above if they have filesystems
     done
 fi
 
@@ -304,6 +383,15 @@ if [[ -n "$RAID_DEVICES" ]]; then
         info "  🔗 /dev/$md_device"
     done
 fi
+
+# Additional filesystem detection using blkid
+info "Cross-checking with blkid..."
+blkid | while read line; do
+    device=$(echo "$line" | cut -d: -f1)
+    if [[ "$device" =~ sdb[0-9]+ ]]; then
+        info "  Detected: $line"
+    fi
+done
 
 echo
 info "📊 Storage Discovery Summary"
@@ -347,6 +435,15 @@ echo
 echo "Storage Statistics:"
 echo "  Total mounts: $(df | grep -c "/mnt/autofs" || echo "0")"
 echo "  Total size: $(df -h | grep "/mnt/autofs" | awk '{sum+=$2} END {print sum "GB"}' || echo "0GB")"
+
+echo
+echo "Debug Information:"
+echo "=================="
+echo "All block devices:"
+lsblk
+echo
+echo "Filesystem information:"
+blkid | grep -E "sdb[0-9]+"
 EOF
 
 chmod +x /usr/local/bin/autofs-storage-status
@@ -362,7 +459,7 @@ chmod +x /usr/local/bin/autofs-unmount-all
 
 success "Storage management tools created"
 
-# Create index file for web interface
+# Create index file for web interface (same as before)
 info "Creating web interface index..."
 
 cat > "$AUTOFS_WEB_BASE/index.html" << 'EOF'
@@ -536,6 +633,15 @@ echo "  • Storage status: autofs-storage-status"
 echo "  • Unmount all: autofs-unmount-all"
 echo "  • View logs: tail -f /var/log/autofs/storage-discovery.log"
 echo
+
+if [[ $MOUNT_COUNT -eq 0 ]]; then
+    warn "No devices were mounted. Check the debug output above and try:"
+    echo "  • Run: autofs-storage-status"
+    echo "  • Check: blkid | grep sdb"
+    echo "  • Verify: ls -la /dev/sdb*"
+    echo "  • Manual test: mkdir /tmp/test && mount -t ntfs-3g /dev/sdb1 /tmp/test"
+fi
+
 info "Ready for Stage 4: Web Server Configuration"
 
 # Create completion marker
