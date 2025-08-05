@@ -23,7 +23,7 @@ export APT_LISTCHANGES_FRONTEND=none
 
 echo "Step 1: Update package lists and install git"
 echo "--------------------------------------------"
-sudo apt update && sudo apt install git -y
+sudo apt purge uwf && sudo apt update && sudo apt install git -y
 
 echo
 echo "Step 2: Clone repository"
