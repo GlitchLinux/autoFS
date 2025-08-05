@@ -64,20 +64,7 @@ echo
 echo "Step 7: Update and upgrade system - AUTO-ACCEPTING"
 echo "--------------------------------------------------"
 sudo apt --fix-broken install -y
-sudo apt update && sudo apt upgrade -y
-#
-#echo
-#echo "Step 8: Verify critical packages"
-#echo "--------------------------------"
-#echo "Checking critical packages:"
-
-#for pkg in nginx python3 iptables dnsmasq bridge-utils ntfs-3g; do
-#    if dpkg -l "$pkg" 2>/dev/null | grep -q "^ii" || command -v "$pkg" >/dev/null 2>&1; then
-#       echo "✓ $pkg - OK"
-#    else
-#        echo "✗ $pkg - Missing"
-#    fi
-#done
+sudo apt update && sudo apt install iptables -y && sudo apt upgrade -y
 
 echo
 echo "Step 10: Create system directories"
@@ -95,8 +82,6 @@ echo "STAGE 1 COMPLETE!"
 echo "================="
 echo "All steps executed successfully"
 echo "Ready for Stage 2: Network Configuration"
-
-sudo bash /home/SCRIPTS/stage2-network-config.sh > /dev/null
 
 # Create completion marker
 echo "$(date): Stage 1 completed" > /tmp/.autofs-stage1-complete
