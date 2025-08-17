@@ -5,7 +5,7 @@
 
 set -e
 
-echo "🌚 AutoFS True Dark Theme Application 🌚"
+echo "🌚 AutoFS Dark Theme Application 🌚"
 echo "========================================"
 echo
 
@@ -254,10 +254,10 @@ cat > "$AUTOFS_WEB_ROOT/index.html" << 'EOF'
     <div class="container">
         <div class="header">
             <h1>🚀 AutoFS Universal File Server</h1>
-            <div class="subtitle">Modern file server with clean dark interface</div>
+            <div class="subtitle">created by: https://github.com/glitchlinux</div>
             <div class="status">
                 <span>🟢</span>
-                <span>System Online - True Dark Theme Active</span>
+                <span>System Online</span>
             </div>
         </div>
         
@@ -780,20 +780,110 @@ else
     exit 1
 fi
 
+#echo ""
+#echo "  • Background: Now true dark (#1a1a1a) like Google/Claude"
+#echo "  • Cards: Clean dark grey (#202124, #292a2d)"
+#echo "  • Text: Proper contrast (#e8eaed, #9aa0a6)"
+#echo "  • Accent: Google-like blue (#8ab4f8)"
+#echo "  • Borders: Subtle dark borders (#303134)"
+#echo "  • No more purple/blue gradients!"
 echo
-success "🌚 TRUE Dark Theme Successfully Applied!"
-echo
-echo "🎨 What Changed:"
-echo "  • Background: Now true dark (#1a1a1a) like Google/Claude"
-echo "  • Cards: Clean dark grey (#202124, #292a2d)"
-echo "  • Text: Proper contrast (#e8eaed, #9aa0a6)"
-echo "  • Accent: Google-like blue (#8ab4f8)"
-echo "  • Borders: Subtle dark borders (#303134)"
-echo "  • No more purple/blue gradients!"
-echo
-echo "🌐 Access Your TRUE Dark Interface:"
+echo "🌐 AccessautoFS:"
 echo "  📱 Main: http://192.168.100.1:8080"
 echo "  📁 Drives: http://192.168.100.1:8080/drives/"
 echo "  🖥️ System: http://192.168.100.1:8080/system/"
+echo ""
+# Get network info
+PRIMARY_IF=$(ip route show default | head -n1 | awk '{print $5}' 2>/dev/null || echo "none")
+PRIMARY_IP=$(ip addr show "$PRIMARY_IF" | grep 'inet ' | head -n1 | awk '{print $2}' | cut -d/ -f1 2>/dev/null || echo "unknown")
+BRIDGE_STATUS=$(ip link show br-autofs | grep -o 'state [A-Z]*' | awk '{print $2}' 2>/dev/null || echo "DOWN")
+
+echo "External Interface: $PRIMARY_IF ($PRIMARY_IP)"
+echo "Internal Bridge: br-autofs (192.168.100.1) - $BRIDGE_STATUS"
+
+# Test connectivity
+if ping -c 1 -W 2 192.168.100.1 >/dev/null 2>&1; then
+    success "Internal connectivity: Working"
+else
+    error "Internal connectivity: Failed"
+fi
+
 echo
-success "🎯 Now you have a PROPER dark theme like Google and Claude! 🌚"
+echo "💾 Storage Status:"
+echo "================="
+
+# Count mounted devices
+MOUNT_COUNT=$(df | grep -c "/mnt/autofs" 2>/dev/null || echo "0")
+TOTAL_SIZE=$(df -h | grep "/mnt/autofs" | awk '{sum+=$2} END {print sum "GB"}' 2>/dev/null || echo "0GB")
+
+echo "Mounted devices: $MOUNT_COUNT"
+echo "Total accessible storage: $TOTAL_SIZE"
+
+echo
+echo
+echo "Alternative Access:"
+echo "  Status: http://192.168.100.1:8080/status"
+echo "  Health: http://192.168.100.1:8080/health"
+
+echo
+#echo "📁 Available Sections:"
+#echo "===================="
+#echo "  💾 /drives/  - All mounted storage devices"
+#echo "  🖥️ /system/  - System directories"
+#echo "  🌐 /shares/  - Network shares"
+#echo "  📊 /logs/    - System logs"
+
+echo
+echo "🛠️ Management Commands:"
+echo "====================="
+echo "  autofs-status           - This status display"
+echo "  autofs-network-status   - Network configuration details"
+echo "  autofs-storage-status   - Storage mount details"
+echo "  autofs-unmount-all      - Safely unmount all storage"
+
+echo
+#if systemctl is-active --quiet nginx && [[ "$BRIDGE_STATUS" == "UP" ]]; then
+#    success "🎉 AutoFS is fully operational!"
+#else
+#    warn "⚠️ AutoFS has some issues - check individual services"
+#fi
+
+chmod +x /usr/local/bin/autofs-status
+
+# Run final status check
+success "AutoFS Universal File Server is now ONLINE! 🎉"
+echo
+echo "🛠️ Management:"
+echo "============="
+echo "  • Full status: autofs-status"
+echo "  • Storage info: autofs-storage-status"
+echo "  • Network info: autofs-network-status"
+
+# Create completion marker
+
+echo
+echo "🔒 Security Notes:"
+echo "================="
+echo "  • All access is READ-ONLY (safe browsing)"
+echo "  • No script execution allowed"
+echo "  • Sensitive files are protected"
+echo "  • Local network access only"
+echo
+#success "🚀 AutoFS Universal File Server is ready for use!"
+
+
+
+echo "🔒Access autoFS:"
+echo "===================="
+echo ""
+echo "  • Primary URL: http://192.168.100.1:8080"
+if [[ "$PRIMARY_IP" != "192.168.100.1" && "$PRIMARY_IP" != "unknown" ]]; then
+    echo "  • External URL: http://$PRIMARY_IP:8080"
+fi
+echo ""
+
+#web_info "Hostname: http://fileserver.autofs.local:8080"
+
+# Final log entry
+#echo "$(date): AutoFS fully deployed and operational" >> /var/log/autofs/storage-discovery.log
+
